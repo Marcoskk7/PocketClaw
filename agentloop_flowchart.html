@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nanobot AgentLoop 执行流程图</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e17;
+    --surface: #131926;
+    --surface2: #1a2236;
+    --border: #2a3654;
+    --accent: #38bdf8;
+    --accent2: #818cf8;
+    --accent3: #fb923c;
+    --accent4: #34d399;
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --danger: #f87171;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans SC', sans-serif;
+    padding: 40px 20px;
+    min-height: 100vh;
+  }
+  .container { max-width: 1000px; margin: 0 auto; }
+  h1 {
+    font-size: 2rem; font-weight: 700; text-align: center; margin-bottom: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    text-align: center; color: var(--text-dim); font-size: 0.9rem;
+    margin-bottom: 40px; font-family: 'JetBrains Mono', monospace;
+  }
+  .flow { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .node {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 28px; max-width: 700px; width: 100%; position: relative;
+    opacity: 0; transform: translateY(20px); animation: fadeIn 0.5s ease forwards;
+  }
+  .node:nth-child(1) { animation-delay: 0.1s; }
+  .node:nth-child(3) { animation-delay: 0.2s; }
+  .node:nth-child(5) { animation-delay: 0.3s; }
+  .node:nth-child(7) { animation-delay: 0.4s; }
+  .node:nth-child(9) { animation-delay: 0.5s; }
+  .node:nth-child(11) { animation-delay: 0.6s; }
+  .node:nth-child(13) { animation-delay: 0.7s; }
+  .node:nth-child(15) { animation-delay: 0.8s; }
+  .node:nth-child(17) { animation-delay: 0.9s; }
+  .node:nth-child(19) { animation-delay: 1.0s; }
+  .node:nth-child(21) { animation-delay: 1.1s; }
+  @keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }
+  .node-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .step-num {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; font-weight: 500;
+    padding: 3px 10px; border-radius: 20px; white-space: nowrap;
+  }
+  .step-title { font-weight: 700; font-size: 1.05rem; }
+  .node-body {
+    color: var(--text-dim); font-size: 0.88rem; line-height: 1.6; padding-left: 2px;
+  }
+  .node-body code {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;
+    background: var(--surface2); padding: 2px 7px; border-radius: 4px; color: var(--accent);
+  }
+  .node-body .file { color: var(--accent3); }
+  .node-body .method { color: var(--accent4); }
+  .arrow { display: flex; flex-direction: column; align-items: center; height: 36px; position: relative; }
+  .arrow-line {
+    width: 2px; flex: 1;
+    background: linear-gradient(180deg, var(--border), var(--accent) 50%, var(--border));
+  }
+  .arrow-head {
+    width: 0; height: 0;
+    border-left: 6px solid transparent; border-right: 6px solid transparent;
+    border-top: 8px solid var(--accent);
+  }
+  .arrow-label {
+    position: absolute; right: calc(50% - 230px); top: 8px;
+    font-size: 0.75rem; color: var(--accent2);
+    font-family: 'JetBrains Mono', monospace; background: var(--bg); padding: 0 6px;
+  }
+  .phase-entry { border-left: 3px solid var(--accent); }
+  .phase-entry .step-num { background: rgba(56,189,248,0.15); color: var(--accent); }
+  .phase-core { border-left: 3px solid var(--accent2); }
+  .phase-core .step-num { background: rgba(129,140,248,0.15); color: var(--accent2); }
+  .phase-tool { border-left: 3px solid var(--accent3); }
+  .phase-tool .step-num { background: rgba(251,146,60,0.15); color: var(--accent3); }
+  .phase-exit { border-left: 3px solid var(--accent4); }
+  .phase-exit .step-num { background: rgba(52,211,153,0.15); color: var(--accent4); }
+  .phase-decision { border-left: 3px solid var(--danger); background: rgba(248,113,113,0.04); }
+  .phase-decision .step-num { background: rgba(248,113,113,0.15); color: var(--danger); }
+  .loop-bracket {
+    border: 2px dashed var(--accent2); border-radius: 16px;
+    padding: 20px 12px 16px; display: flex; flex-direction: column; align-items: center; gap: 0;
+    max-width: 740px; width: 100%; position: relative;
+  }
+  .loop-bracket::before {
+    content: '⟳ WHILE iteration < max_iterations (默认 40)';
+    position: absolute; top: -13px; left: 24px; background: var(--bg); padding: 0 10px;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--accent2); font-weight: 500;
+  }
+  .loop-indicator {
+    display: flex; align-items: center; gap: 8px; padding: 10px 20px;
+    border: 1px dashed var(--accent2); border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--accent2);
+    max-width: 700px; width: 100%; justify-content: center;
+  }
+  .pulse {
+    width: 8px; height: 8px; background: var(--accent2); border-radius: 50%;
+    animation: pulse 2s ease infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.2); }
+  }
+  .legend {
+    display: flex; gap: 24px; justify-content: center; margin-top: 36px; flex-wrap: wrap;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-dim); }
+  .legend-color { width: 14px; height: 14px; border-radius: 3px; }
+
+  .bp-section {
+    margin-top: 50px; padding-top: 30px; border-top: 1px solid var(--border);
+  }
+  .bp-section h2 {
+    font-size: 1.4rem; font-weight: 700; margin-bottom: 20px;
+    color: var(--accent);
+  }
+  .bp-table {
+    width: 100%; border-collapse: collapse; font-size: 0.88rem;
+  }
+  .bp-table th {
+    text-align: left; padding: 10px 14px; background: var(--surface2);
+    border: 1px solid var(--border); font-weight: 500; color: var(--accent);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;
+  }
+  .bp-table td {
+    padding: 10px 14px; border: 1px solid var(--border); vertical-align: top;
+  }
+  .bp-table tr:hover { background: rgba(56,189,248,0.04); }
+  .bp-table code {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;
+    background: var(--surface2); padding: 2px 7px; border-radius: 4px; color: var(--accent);
+  }
+  .bp-table .file-col { color: var(--accent3); font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
+  .bp-table .line-col { color: var(--accent4); font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; text-align: center; }
+  .priority { font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+  .priority-must { background: rgba(248,113,113,0.15); color: var(--danger); }
+  .priority-rec { background: rgba(129,140,248,0.15); color: var(--accent2); }
+  .priority-opt { background: rgba(148,163,184,0.15); color: var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Nanobot AgentLoop 执行流程</h1>
+  <p class="subtitle">nanobot agent -m "your message" | python -m nanobot agent</p>
+
+  <div class="flow">
+
+    <div class="node phase-entry">
+      <div class="node-header">
+        <span class="step-num">ENTRY</span>
+        <span class="step-title">CLI 入口</span>
+      </div>
+      <div class="node-body">
+        用户执行 <code>nanobot agent -m "消息"</code> 或 <code>python -m nanobot agent</code><br>
+        → <code class="file">cli/commands.py</code> :: <code class="method">agent()</code><br>
+        加载配置、创建 <code>MessageBus</code>、<code>LLMProvider</code>、<code>CronService</code>
+      </div>
+    </div>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+    <div class="node phase-entry">
+      <div class="node-header">
+        <span class="step-num">INIT</span>
+        <span class="step-title">AgentLoop 初始化</span>
+      </div>
+      <div class="node-body">
+        <code class="file">agent/loop.py</code> :: <code class="method">AgentLoop.__init__()</code><br>
+        初始化: <code>ContextBuilder</code> · <code>SessionManager</code> · <code>ToolRegistry</code> · <code>SubagentManager</code> · <code>MemoryConsolidator</code><br>
+        注册默认工具: read_file, write_file, edit_file, list_dir, exec, web_search, web_fetch, message, spawn, cron
+      </div>
+    </div>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div>
+      <span class="arrow-label">单次消息: process_direct() / 交互: run()</span>
+    </div>
+
+    <div class="node phase-core">
+      <div class="node-header">
+        <span class="step-num">STEP 1</span>
+        <span class="step-title">接收消息 & 会话管理</span>
+      </div>
+      <div class="node-body">
+        <code class="method">_process_message(msg)</code><br>
+        ① 检查 slash 命令 (/new, /help, /stop, /restart)<br>
+        ② 获取或创建 Session → <code>sessions.get_or_create(key)</code><br>
+        ③ 可能触发 Memory Consolidation → <code class="method">maybe_consolidate_by_tokens()</code><br>
+        ④ 设置工具上下文 (channel, chat_id)
+      </div>
+    </div>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+    <div class="node phase-core">
+      <div class="node-header">
+        <span class="step-num">STEP 2</span>
+        <span class="step-title">构建上下文</span>
+      </div>
+      <div class="node-body">
+        <code class="file">agent/context.py</code> :: <code class="method">build_messages()</code><br>
+        ① 构建 system prompt: 身份 + AGENTS.md/SOUL.md + Memory + Skills<br>
+        ② 加入历史对话 <code>session.get_history()</code><br>
+        ③ 附加当前用户消息 + 运行时上下文 (时间、平台信息)<br>
+        ④ 处理 media 附件 (图片 base64 编码)
+      </div>
+    </div>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+    <div class="loop-bracket">
+
+      <div class="node phase-core">
+        <div class="node-header">
+          <span class="step-num">STEP 3</span>
+          <span class="step-title">调用 LLM</span>
+        </div>
+        <div class="node-body">
+          <code class="file">providers/base.py</code> :: <code class="method">provider.chat_with_retry(messages, tools, model)</code><br>
+          将 messages + tool definitions 发送到 LLM API<br>
+          返回 <code>LLMResponse</code>: content, tool_calls, finish_reason, usage, reasoning_content
+        </div>
+      </div>
+
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+      <div class="node phase-decision">
+        <div class="node-header">
+          <span class="step-num">判断</span>
+          <span class="step-title">response.has_tool_calls ?</span>
+        </div>
+        <div class="node-body">
+          <strong style="color:var(--accent3)">YES</strong> — LLM 返回了 tool_calls → 进入工具执行分支<br>
+          <strong style="color:var(--accent4)">NO</strong> — LLM 只返回 content → 最终回复, 退出循环 (break)
+        </div>
+      </div>
+
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div>
+        <span class="arrow-label">YES: 有 tool_calls</span>
+      </div>
+
+      <div class="node phase-tool">
+        <div class="node-header">
+          <span class="step-num">STEP 4</span>
+          <span class="step-title">执行工具调用</span>
+        </div>
+        <div class="node-body">
+          ① 发送 progress 提示 (思考内容 + 工具提示)<br>
+          ② 将 assistant 消息 (含 tool_calls) 追加到 messages<br>
+          ③ 遍历每个 tool_call:<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;<code class="file">tools/registry.py</code> :: <code class="method">tools.execute(name, args)</code><br>
+          &nbsp;&nbsp;&nbsp;&nbsp;→ 参数类型转换 → 参数校验 → <code class="method">tool.execute(**params)</code><br>
+          ④ 将工具结果追加到 messages → <code class="method">context.add_tool_result()</code>
+        </div>
+      </div>
+
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div>
+        <span class="arrow-label">回到 STEP 3, iteration++</span>
+      </div>
+
+      <div class="loop-indicator">
+        <div class="pulse"></div>
+        <span>循环继续直到: LLM 不再请求工具 / 达到 max_iterations / 遇到错误</span>
+      </div>
+
+    </div>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div>
+      <span class="arrow-label">NO: 无 tool_calls / 退出循环</span>
+    </div>
+
+    <div class="node phase-exit">
+      <div class="node-header">
+        <span class="step-num">STEP 5</span>
+        <span class="step-title">保存会话 & 发送回复</span>
+      </div>
+      <div class="node-body">
+        ① <code class="method">_save_turn(session, messages, skip)</code> — 保存新消息到 session, 截断过长工具结果<br>
+        ② <code class="method">sessions.save(session)</code> — 持久化 session<br>
+        ③ <code class="method">maybe_consolidate_by_tokens()</code> — 再次检查是否需要记忆整合<br>
+        ④ 构建 <code>OutboundMessage</code> 发送回复给用户
+      </div>
+    </div>
+
+    <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+    <div class="node phase-exit">
+      <div class="node-header">
+        <span class="step-num">OUTPUT</span>
+        <span class="step-title">用户收到回复</span>
+      </div>
+      <div class="node-body">
+        CLI 模式: <code class="method">_print_agent_response()</code> 打印到终端 (支持 Markdown 渲染)<br>
+        Gateway 模式: 通过 MessageBus → Channel (Telegram/Slack/...) 发送
+      </div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-color" style="background:var(--accent)"></div><span>入口/初始化</span></div>
+    <div class="legend-item"><div class="legend-color" style="background:var(--accent2)"></div><span>核心流程</span></div>
+    <div class="legend-item"><div class="legend-color" style="background:var(--accent3)"></div><span>工具执行</span></div>
+    <div class="legend-item"><div class="legend-color" style="background:var(--danger)"></div><span>判断分支</span></div>
+    <div class="legend-item"><div class="legend-color" style="background:var(--accent4)"></div><span>退出/输出</span></div>
+  </div>
+
+  <div class="bp-section">
+    <h2>推荐断点位置</h2>
+    <table class="bp-table">
+      <thead>
+        <tr>
+          <th>优先级</th>
+          <th>文件</th>
+          <th>行号</th>
+          <th>位置 / 方法</th>
+          <th>观察要点</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="priority priority-must">必打</span></td>
+          <td class="file-col">agent/loop.py</td>
+          <td class="line-col">190</td>
+          <td><code>_run_agent_loop</code> — while 循环入口</td>
+          <td>iteration 计数, messages 数组长度</td>
+        </tr>
+        <tr>
+          <td><span class="priority priority-must">必打</span></td>
+          <td class="file-col">agent/loop.py</td>
+          <td class="line-col">195</td>
+          <td><code>provider.chat_with_retry()</code></td>
+          <td>发给 LLM 的 messages 内容, tool_defs 列表</td>
+        </tr>
+        <tr>
+          <td><span class="priority priority-must">必打</span></td>
+          <td class="file-col">agent/loop.py</td>
+          <td class="line-col">201</td>
+          <td><code>if response.has_tool_calls</code></td>
+          <td>LLM 返回的 response.content, response.tool_calls</td>
+        </tr>
+        <tr>
+          <td><span class="priority priority-must">必打</span></td>
+          <td class="file-col">agent/loop.py</td>
+          <td class="line-col">224</td>
+          <td><code>tools.execute(tool_call.name, ...)</code></td>
+          <td>tool_call.name, tool_call.arguments, result</td>
+        </tr>
+        <tr>
+          <td><span class="priority priority-rec">推荐</span></td>
+          <td class="file-col">agent/loop.py</td>
+          <td class="line-col">343</td>
+          <td><code>_process_message()</code> 入口</td>
+          <td>msg 对象的完整内容 (channel, content, metadata)</td>
+        </tr>
+        <tr>
+          <td><span class="priority priority-rec">推荐</span></td>
+          <td class="file-col">agent/context.py</td>
+          <td class="line-col">27</td>
+          <td><code>build_system_prompt()</code></td>
+          <td>system prompt 的完整组成部分</td>
+        </tr>
+        <tr>
+          <td><span class="priority priority-rec">推荐</span></td>
+          <td class="file-col">agent/loop.py</td>
+          <td class="line-col">455</td>
+          <td><code>_save_turn()</code></td>
+          <td>哪些消息被保存到 session</td>
+        </tr>
+        <tr>
+          <td><span class="priority priority-opt">可选</span></td>
+          <td class="file-col">providers/base.py</td>
+          <td class="line-col">chat()</td>
+          <td>具体 provider 的 <code>chat()</code></td>
+          <td>实际 API 请求/响应细节</td>
+        </tr>
+        <tr>
+          <td><span class="priority priority-opt">可选</span></td>
+          <td class="file-col">tools/registry.py</td>
+          <td class="line-col">38</td>
+          <td><code>execute()</code></td>
+          <td>工具参数校验、执行过程、返回值</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+</body>
+</html>

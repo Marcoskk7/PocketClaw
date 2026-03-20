@@ -3,7 +3,8 @@
 from typing import Any
 
 from nanobot.agent.tools.base import Tool
-
+from langchain_core.tools import BaseTool
+from langchain_core.utils.function_calling import convert_to_openai_function
 
 class ToolRegistry:
     """
@@ -14,10 +15,14 @@ class ToolRegistry:
 
     def __init__(self):
         self._tools: dict[str, Tool] = {}
+        self._lc_tools: dict[str, BaseTool] = {}
 
     def register(self, tool: Tool) -> None:
         """Register a tool."""
-        self._tools[tool.name] = tool
+        if isinstance(tool, BaseTool):
+            self._lc_tools[tool.name] = tool
+        else:
+            self._tools[tool.name] = tool
 
     def unregister(self, name: str) -> None:
         """Unregister a tool by name."""
@@ -33,7 +38,13 @@ class ToolRegistry:
 
     def get_definitions(self) -> list[dict[str, Any]]:
         """Get all tool definitions in OpenAI format."""
-        return [tool.to_schema() for tool in self._tools.values()]
+        defs = []
+        for t in self._lc_tools.values():
+            fn  = convert_to_openai_function(t)
+            defs.append({'type':'function', 'function':fn})
+        for t in self._tools.values():
+            defs.append(t.to_schema())
+        return defs
 
     async def execute(self, name: str, params: dict[str, Any]) -> str:
         """Execute a tool by name with given parameters."""
