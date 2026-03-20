@@ -6,6 +6,13 @@ import os
 import select
 import signal
 import sys
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message="Core Pydantic V1 functionality isn't compatible with Python 3.14",
+    category=UserWarning,
+)
 from pathlib import Path
 from typing import Any
 

@@ -27,14 +27,15 @@ class ToolRegistry:
     def unregister(self, name: str) -> None:
         """Unregister a tool by name."""
         self._tools.pop(name, None)
+        self._lc_tools.pop(name, None)
 
     def get(self, name: str) -> Tool | None:
         """Get a tool by name."""
-        return self._tools.get(name)
+        return self._tools.get(name) or self._lc_tools.get(name)
 
     def has(self, name: str) -> bool:
         """Check if a tool is registered."""
-        return name in self._tools
+        return name in self._tools or name in self._lc_tools
 
     def get_definitions(self) -> list[dict[str, Any]]:
         """Get all tool definitions in OpenAI format."""
@@ -49,7 +50,17 @@ class ToolRegistry:
     async def execute(self, name: str, params: dict[str, Any]) -> str:
         """Execute a tool by name with given parameters."""
         _HINT = "\n\n[Analyze the error above and try a different approach.]"
-
+        
+        lc_tool = self._lc_tools.get(name)
+        if lc_tool is not None:
+            try: 
+                result = str(await lc_tool.ainvoke(params))
+                if result.startswith("Error"):
+                    return result + _HINT
+                return result
+            except Exception as e:
+                return f"Error executing {name}: {str(e)}" + _HINT
+        
         tool = self._tools.get(name)
         if not tool:
             return f"Error: Tool '{name}' not found. Available: {', '.join(self.tool_names)}"
@@ -72,10 +83,10 @@ class ToolRegistry:
     @property
     def tool_names(self) -> list[str]:
         """Get list of registered tool names."""
-        return list(self._tools.keys())
+        return list(self._tools.keys()) + list(self._lc_tools.keys())
 
     def __len__(self) -> int:
-        return len(self._tools)
+        return len(self._tools) + len(self._lc_tools)
 
     def __contains__(self, name: str) -> bool:
-        return name in self._tools
+        return name in self._tools or name in self._lc_tools

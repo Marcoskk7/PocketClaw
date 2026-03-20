@@ -28,6 +28,7 @@ from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.providers.base import LLMProvider
 from nanobot.session.manager import Session, SessionManager
+from nanobot.agent.tools.web_lc import create_web_fetch_tool, create_web_search_tool
 
 if TYPE_CHECKING:
     from nanobot.config.schema import ChannelsConfig, ExecToolConfig, WebSearchConfig
@@ -126,8 +127,10 @@ class AgentLoop:
             restrict_to_workspace=self.restrict_to_workspace,
             path_append=self.exec_config.path_append,
         ))
-        self.tools.register(WebSearchTool(config=self.web_search_config, proxy=self.web_proxy))
-        self.tools.register(WebFetchTool(proxy=self.web_proxy))
+        # self.tools.register(WebSearchTool(config=self.web_search_config, proxy=self.web_proxy))
+        self.tools.register(create_web_fetch_tool(proxy=self.web_proxy))
+        self.tools.register(create_web_search_tool(proxy=self.web_proxy, config = self.web_search_config))
+        # self.tools.register(WebFetchTool(proxy=self.web_proxy))
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound))
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
@@ -180,6 +183,11 @@ class AgentLoop:
             return f'{tc.name}("{val[:40]}…")' if len(val) > 40 else f'{tc.name}("{val}")'
         return ", ".join(_fmt(tc) for tc in tool_calls)
 
+    def _estimate_messages_tokens(self, messages: list[dict], tools: list[dict] | None = None) -> int:
+        """Estimate total prompt tokens for messages + tools."""
+        from nanobot.utils.helpers import estimate_prompt_tokens
+        return estimate_prompt_tokens(messages, tools)
+
     async def _run_agent_loop(
         self,
         initial_messages: list[dict],
@@ -190,11 +198,35 @@ class AgentLoop:
         iteration = 0
         final_content = None
         tools_used: list[str] = []
+        token_limit = int(self.context_window_tokens * 0.85)
 
         while iteration < self.max_iterations:
             iteration += 1
 
             tool_defs = self.tools.get_definitions()
+
+            # Check if context is approaching the token limit before calling LLM.
+            # If so, make a final call without tools to force a text summary.
+            estimated_tokens = self._estimate_messages_tokens(messages, tool_defs)
+            if estimated_tokens > token_limit:
+                logger.warning(
+                    "Context approaching limit ({}/{} tokens), forcing final response",
+                    estimated_tokens, self.context_window_tokens,
+                )
+                response = await self.provider.chat_with_retry(
+                    messages=messages, tools=None, model=self.model,
+                )
+                clean = self._strip_think(response.content)
+                if response.finish_reason == "error":
+                    final_content = clean or "Context too large. Please start a new conversation."
+                else:
+                    final_content = clean
+                messages = self.context.add_assistant_message(
+                    messages, clean,
+                    reasoning_content=response.reasoning_content,
+                    thinking_blocks=response.thinking_blocks,
+                )
+                break
 
             response = await self.provider.chat_with_retry(
                 messages=messages,

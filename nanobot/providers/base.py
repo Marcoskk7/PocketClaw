@@ -88,6 +88,7 @@ class LLMProvider(ABC):
         "connection",
         "server error",
         "temporarily unavailable",
+        "unable to get json response",
     )
 
     _SENTINEL = object()
